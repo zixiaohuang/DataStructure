@@ -17,7 +17,7 @@
 3.根节点是黑色
 4.每个叶子节点（叶子节点指树尾端NIL指针或NULL结点）是黑色
 5.如果节点是红色，那么它的两个孩子节点都是黑色的
-6.对于每个节点来说，从节点到叶子节点的路径包含相同数目的黑色节点
+6.对于每个节点来说，从节点到叶子节点的路径包含相同数目的黑色节点（黑高度）
 
 
 */
@@ -110,7 +110,7 @@ struct redblacktree<T>::RB_Node {
 		else {//根节点，得到左儿子再一直往右走
 			ptn = ptn->lc;
 			while (ptn->rc) {
-				ptn=ptn->rc；
+				ptn = ptn->rc;
 			}
 		}
 		return ptn;
@@ -127,7 +127,7 @@ struct redblacktree<T>::RB_Node {
 		else {
 			ptn = ptn->rc;
 			while (ptn->lc) {
-				ptn=ptn->lc；
+				ptn = ptn->lc;
 			}
 		}
 		return ptn;
@@ -146,6 +146,10 @@ public://迭代器就是各种重载
 
 	bool operator==(iterator const& itr) {
 		return _real_node == itr._real_node;
+	}
+
+	bool operator!=(iterator const& itr) {
+		return _real_node != itr._real_node;
 	}
 
 	bool operator!() {
@@ -170,7 +174,7 @@ public://迭代器就是各种重载
 	//构造函数
 	iterator(RB_Node* node_nn=NULL):_real_node(node_nn){}//默认构造？
 	iterator(T const& val_vv):_real_node(find(val_vv)) {}
-	iterator(iterator const& itr):_real_node(iter._real_node){}//拷贝构造
+	iterator(iterator const& itr):_real_node(itr._real_node){}//拷贝构造
 };
 
 //搜索
@@ -336,11 +340,11 @@ RR-2(叔叔是红色)（插入到等价B-树的四节点中）：
 
 template<typename T>
 void redblacktree<T>::SolveDoubleRed(RB_Node* nn) {
-	while ((!(nn->ftr)) || nn->ftr-> RBc == RB_COLOR_RED) {//递归到根和RR-0的情况
+	while ((nn->ftr) && nn->ftr-> RBc == RB_COLOR_RED) {//递归到根和RR-0的情况
 		RB_Node* pftr = nn->ftr;//父节点
 		RB_Node* uncle = bro(pftr);//叔叔节点
 		RB_Node* grdftr = pftr->ftr;//祖父节点
-		if (uncler&&unclde->RBc == RB_COLOR_RED) {//RR-2:叔叔节点存在且位红色
+		if (uncle&&uncle->RBc == RB_COLOR_RED) {//RR-2:叔叔节点存在且位红色
 			grdftr->RBc = RB_COLOR_RED;
 			uncle->RBc = RB_COLOR_BLACK;
 			pftr->RBc = RB_COLOR_BLACK;
@@ -391,3 +395,259 @@ void redblacktree<T>::SolveDoubleRed(RB_Node* nn) {
 		nn->RBc = RB_COLOR_BLACK;
 	}
 }
+
+template<typename T>
+typename
+redblacktree<T>::iterator redblacktree<T>::begin() {
+	RB_Node* ptn = _root;
+	while (ptn->lc) {
+		ptn = ptn->lc;
+	}
+	return iterator(ptn);
+
+}
+
+template<typename T>
+typename
+redblacktree<T>::iterator redblacktree<T>::end() {
+	return iterator((RB_Node*)NULL);
+}
+
+
+template<typename T>
+int redblacktree<T>::size() {
+	return _size;
+}
+
+
+template<typename T>
+bool redblacktree<T>::empty() {
+	return !_size;
+}
+
+template<typename T>
+void redblacktree<T>::clear() {
+	removetree(_root);
+	_size = 0;
+	_root = NULL;
+}
+
+
+template<typename T>
+void redblacktree<T>::removetree(RB_Node* ptn) {//后序遍历
+	if (!ptn) {//若空直接返回
+		return;
+	}
+	removetree(ptn->lc);
+	removetree(ptn->rc);
+	delete ptn;//初始化，插入new对应delete
+}
+
+/*
+删除的思路：一路找到被删除节点的真后继（比该节点值大的第一个节点），然后回到覆盖原节点，如此反复。
+若最后删除的是红节点，则没有涉及失黑修正。如果最后删除是黑节点，性质6被破坏
+*/
+
+
+/*
+失黑修正
+需要递归的情况：
+LB-1（父亲为黑色，兄弟为红色）
+不能直接解决，但可以利用一次旋转，触发递归，将它转化为不需要递归的LB-2R或者LB-3
+LB-2B(没有红色侄子，且父亲为黑色，兄弟为黑色)
+这时自己、父亲、兄弟都独占二节点。这是红黑树修正过程中唯一可能出现对数递归的情况。
+这时染红兄弟，然后递归修正父亲。
+不需要递归：
+LB-2R（没有红色侄子，且父亲为红色，兄弟为黑色）
+只需要对父亲和兄弟各做一次重染色
+LB-3(有红色侄子)
+修正方法是1或2次旋转，然后1或2次重染色
+*/
+
+template<typename T>
+void redblacktree<T>::SolveLostBlack(RB_Node* nn) {
+	while (nn != _root) {
+		RB_Node* pftr = nn->ftr;
+		RB_Node* bthr = bro(nn);
+		if (bthr->RBc == RB_COLOR_RED) {  //LB-1
+			bthr->RBc = RB_COLOR_BLACK;
+			pftr->RBc = RB_COLOR_RED;
+			if (_root == pftr) {
+				_root = bthr;//维护根节点
+			}
+			if (pftr->lc == nn) {
+				zag(pftr);
+			}
+			else {
+				zig(pftr);
+			}
+			bthr = bro(nn);
+			pftr = nn->ftr;
+		}
+		if (bthr->lc&&bthr->lc->RBc == RB_COLOR_RED) {//LB-3
+			RB_COLOR oldRBc = pftr->RBc;
+			pftr->RBc = RB_COLOR_BLACK;
+			if (pftr->lc == nn) {
+				if (_root == pftr) {
+					_root = bthr->lc;
+				}
+				zig(bthr); zag(pftr);
+			}
+			else {
+				bthr->lc->RBc = RB_COLOR_BLACK;
+				if (_root == pftr) {
+					_root = bthr;
+				}
+				zig(pftr);
+			}
+			pftr->ftr->RBc = oldRBc;
+			return;
+		}
+		else if (bthr->rc&&bthr->rc->RBc == RB_COLOR_RED) {//LB-3
+			RB_COLOR oldRBc = pftr->RBc;
+			pftr->RBc = RB_COLOR_BLACK;
+			if (pftr->lc == nn) {
+				bthr->rc->RBc = RB_COLOR_BLACK;
+				if (_root == pftr) {
+					_root = bthr;//变成自己
+				}
+				zag(pftr);
+			}
+			else {
+				if (_root == pftr) {
+					_root = bthr->rc;
+				}
+				zag(bthr); zig(pftr);
+			}
+			pftr->ftr->RBc = oldRBc;
+			return;
+		}
+
+		if (pftr->RBc == RB_COLOR_RED) {//LB-2
+			pftr->RBc = RB_COLOR_BLACK;
+			bthr->RBc = RB_COLOR_RED;
+			return;
+		}
+		else {//LB-2B：父亲为黑色，兄弟为黑色
+			bthr->RBc = RB_COLOR_RED;
+			nn = pftr;
+		}
+	}
+	
+}
+
+
+template<typename T>
+bool redblacktree<T>::remove(T v) {
+	RB_Node* ptn = find(v);
+	RB_Node* node_suc;//后继
+	if (!ptn) {//没有该元素，删除失败
+		return false;
+	}
+	--_size;
+	while (ptn->lc || ptn->rc) {
+		if (!(ptn->lc)) {//没有左儿子，则只有右儿子，且阈值为1
+			node_suc = ptn->rc;
+		}
+		else if (!(ptn->rc)) {//没有右儿子，只有左儿子
+			node_suc = ptn->lc;
+		}
+		else {//两个儿子都没有
+			node_suc = ptn->succ();
+		}
+		ptn->val = node_suc->val;
+		ptn = node_suc;
+	}
+	if (ptn->RBc == RB_COLOR_BLACK) {//若删除的节点颜色为黑，需要失黑修正
+		SolveLostBlack(ptn);
+	}
+	if (ptn->ftr) {//父亲存在,把父亲指向节点的指针消除
+		if (ptn->ftr->lc == ptn)
+		{
+			ptn->ftr->lc = NULL;
+		}
+		else {
+			ptn->ftr->rc = NULL;
+		}
+	}
+	if (_root == ptn) {
+		//assert(_size==0);
+		_root = NULL;
+	}
+	delete ptn;
+	return true;
+}
+
+template<typename T>
+bool redblacktree<T>::remove(iterator& itr) {
+	RB_Node* ptn = itr._real_node;
+	itr._real_node = itr._real_node->right_node();
+	if (!(itr._real_node)) {//没有该元素，删除失败
+		itr._real_node = ptn->left_node();
+	}
+	RB_Node* node_suc;//后继
+	--size;
+	while (ptn->lc || ptn->rc) {
+		if (!(ptn->lc)) {//没有左儿子，则只有右儿子，且阈值为1
+			node_suc = ptn->rc;
+		}
+		else if (!(ptn->rc)) {
+			node_suc = ptn->lc;
+		}
+		else {
+			node_suc = ptn->succ();
+		}
+		ptn->val = node_suc->val;
+		ptn = node_suc;
+	}
+	if (ptn->RBc == RB_COLOR_BLACK) {//若删除的节点颜色为黑，需要失黑修正
+		SolveLostBlack(ptn);
+	}
+	if (ptn->ftr) {//父亲存在,把父亲指向节点的指针消除
+		if (ptn->ftr->lc == ptn)
+		{
+			ptn->ftr->lc == NULL;
+		}
+		else {
+			ptn->ftr->rc = NULL;
+		}
+	}
+	if (_root == ptn) {
+		//assert(_size==0);
+		_root = NULL;
+	}
+	delete ptn;
+	return true;
+}
+
+redblacktree<int> s;
+#include <cstdlib>
+#include <ctime>
+
+int i;//i为全局变量，方便跟踪
+
+int main()
+{
+	srand((unsigned)time(NULL));
+	for (i=0; i < 256; ++i) {
+		s.insert(i);//插入一个随机数0~1023
+	}
+	redblacktree<int>::iterator it;
+	for (i=0; i < 256; ++i) {
+		s.remove(i);
+	}
+	//for (it = s.begin(); it != s.end(); ++it) {
+		//printf("%d\n", *it);
+	//}
+	
+
+	return 0;
+}
+
+//总结
+//不管是双红修正还是双黑修正，均涉及到重染色的操作，而其中RR-1,LB-1,LB-3均需注意维护根节点
+//RR-2,LB-2B分别对应着B-树的上溢和下溢，均需要递归
+//RR-2能递归到RR-0,RR-1,RR-2三种情况中的任何一种，LB-2B同样也会递归到LB-1,LB-2B,LB-2R,LB-3四种失黑修正情况中的任何一种
+//而同样是递归，LB-1只能转移到LB-2R和LB-3
+
+//红黑树稳定，应用广，重点是快
